@@ -241,11 +241,46 @@
   .filter-chip.active{background:var(--accent); color:#1a0a00; border-color:var(--accent);}
 
   .toast{
-    position:fixed; bottom:100px; left:50%; transform:translateX(-50%);
-    background:var(--panel-raised); border:1px solid var(--border); padding:10px 20px; border-radius:30px;
-    font-size:13px; z-index:200; opacity:0; transition:opacity .25s; pointer-events:none;
+    position:fixed; bottom:100px; left:50%; transform:translateX(-50%) scale(0.9);
+    background:var(--panel-raised); border:1px solid var(--border); padding:16px 24px; border-radius:20px;
+    font-size:16px; font-weight:600; line-height:1.4; z-index:200; opacity:0;
+    transition:opacity .25s, transform .25s; pointer-events:none;
+    max-width:88vw; text-align:center; box-shadow:0 8px 30px rgba(0,0,0,0.4);
+    overflow:visible;
   }
-  .toast.show{opacity:1;}
+  .toast.show{opacity:1; transform:translateX(-50%) scale(1);}
+
+  .toast.celebration{
+    background:linear-gradient(135deg, #1f1430, #2a1a3d);
+    border:1.5px solid var(--accent);
+    font-size:18px; font-weight:800; font-family:'Barlow Condensed', sans-serif;
+    padding:20px 28px; box-shadow:0 0 0 1px rgba(255,122,61,0.3), 0 8px 40px rgba(255,122,61,0.35);
+    color:#fff;
+  }
+  .toast.celebration::before, .toast.celebration::after{
+    content:'✦'; position:absolute; font-size:22px; color:var(--accent);
+    animation:sparkle-pop 1.1s ease-out infinite;
+  }
+  .toast.celebration::before{ top:-14px; left:-10px; animation-delay:0s; }
+  .toast.celebration::after{ bottom:-14px; right:-10px; animation-delay:0.4s; content:'✧'; color:var(--inr); }
+
+  .spark-burst{
+    position:fixed; left:50%; bottom:100px; transform:translateX(-50%);
+    z-index:199; pointer-events:none; width:280px; height:140px;
+  }
+  .spark-particle{
+    position:absolute; font-size:20px; opacity:0;
+    animation:spark-fly 1s ease-out forwards;
+  }
+  @keyframes sparkle-pop{
+    0%, 100%{ transform:scale(1) rotate(0deg); opacity:0.7; }
+    50%{ transform:scale(1.3) rotate(20deg); opacity:1; }
+  }
+  @keyframes spark-fly{
+    0%{ opacity:0; transform:translate(0,0) scale(0.4) rotate(0deg); }
+    15%{ opacity:1; }
+    100%{ opacity:0; transform:translate(var(--dx), var(--dy)) scale(1.1) rotate(var(--rot)); }
+  }
 
   .id-pick{
     padding:30px 20px; text-align:center;
@@ -497,7 +532,7 @@ function checkMilestone(totalGBP){
     localStorage.setItem('lhr_milestone_seen', String(milestoneIndex));
     const msg = getMilestoneMessage(totalGBP);
     if(msg){
-      setTimeout(() => showToast(msg, 4200), 2600);
+      setTimeout(() => showToast(msg, 4800, true), 2600);
     }
   }
 }
@@ -693,7 +728,7 @@ function wireTumiLongPress(){
     let grandGBP = 0;
     entries.forEach(e => { grandGBP += toAllCurrencies(e.amount, e.currency).GBP; });
     const tumiCount = (grandGBP / TUMI_PRICE_GBP).toFixed(1);
-    showToast(`This trip = ${tumiCount} TUMI carry-ons. KK is taking notes.`, 4200);
+    showToast(`This trip = ${tumiCount} TUMI carry-ons. KK is taking notes.`, 4800, true);
   };
   let startX, startY, moved = false;
   const start = (e) => {
@@ -877,11 +912,42 @@ function escapeHtml(s){
 }
 
 /* ---------- TOAST ---------- */
-function showToast(msg, duration){
+function showToast(msg, duration, celebrate){
   const t = document.getElementById('toast');
   t.textContent = msg;
+  t.classList.toggle('celebration', !!celebrate);
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), duration || 2200);
+  if(celebrate) fireSparkBurst();
+  setTimeout(() => {
+    t.classList.remove('show');
+    t.classList.remove('celebration');
+  }, duration || 2200);
+}
+
+function fireSparkBurst(){
+  const burst = document.createElement('div');
+  burst.className = 'spark-burst';
+  const symbols = ['✦','✧','✨','🎉','⭐'];
+  const count = 10;
+  for(let i = 0; i < count; i++){
+    const p = document.createElement('span');
+    p.className = 'spark-particle';
+    p.textContent = symbols[Math.floor(Math.random() * symbols.length)];
+    const angle = (Math.PI * 2 * i / count) + (Math.random() * 0.5);
+    const dist = 80 + Math.random() * 70;
+    const dx = Math.cos(angle) * dist;
+    const dy = Math.sin(angle) * dist - 40;
+    const rot = (Math.random() * 360) - 180;
+    p.style.setProperty('--dx', dx + 'px');
+    p.style.setProperty('--dy', dy + 'px');
+    p.style.setProperty('--rot', rot + 'deg');
+    p.style.left = '50%';
+    p.style.top = '50%';
+    p.style.animationDelay = (Math.random() * 0.15) + 's';
+    burst.appendChild(p);
+  }
+  document.body.appendChild(burst);
+  setTimeout(() => burst.remove(), 1400);
 }
 
 /* ---------- TABS ---------- */
@@ -1041,69 +1107,3 @@ document.getElementById('exportBtn').addEventListener('click', () => {
       'Payment Method': e.method || '',
       Location: e.location || '',
       'Entered Currency': e.currency || '',
-      'Original Amount': e.amount || 0,
-      'Amount (GBP)': Math.round(conv.GBP * 100) / 100,
-      'Amount (USD)': Math.round(conv.USD * 100) / 100,
-      'Amount (INR)': Math.round(conv.INR * 100) / 100,
-      'Worth It (1-5)': e.rating || '',
-      Notes: e.notes || '',
-      'Entered By': e.enteredBy || ''
-    };
-  });
-
-  const ws = XLSX.utils.json_to_sheet(rows);
-  ws['!cols'] = [
-    {wch:18},{wch:30},{wch:12},{wch:9},{wch:14},{wch:16},
-    {wch:10},{wch:14},{wch:12},{wch:12},{wch:12},{wch:12},{wch:30},{wch:10}
-  ];
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Kitna Hua');
-
-  const dateStr = new Date().toISOString().slice(0,10);
-  XLSX.writeFile(wb, `Kitna_Hua_Export_${dateStr}.xlsx`);
-  showToast('Exported — check your downloads');
-});
-
-/* ---------- IDENTITY ---------- */
-const idModal = document.getElementById('idModal');
-function updateDeviceLabel(){
-  document.getElementById('deviceIdLabel').textContent = myIdentity
-    ? `Entering as: ${myIdentity}`
-    : 'No identity set';
-}
-document.querySelectorAll('[data-idpick]').forEach(opt => {
-  opt.addEventListener('click', () => {
-    myIdentity = opt.dataset.idpick;
-    localStorage.setItem(ID_KEY, myIdentity);
-    idModal.classList.remove('active');
-    updateDeviceLabel();
-  });
-});
-document.getElementById('switchUserBtn').addEventListener('click', () => {
-  idModal.classList.add('active');
-});
-
-/* ---------- BOOT ---------- */
-loadLocal();
-populateRateInputs();
-updateDeviceLabel();
-if(myIdentity){ idModal.classList.remove('active'); }
-
-const storedMilestone = localStorage.getItem('lhr_milestone_seen');
-if(storedMilestone !== null){
-  lastMilestoneSeen = parseInt(storedMilestone);
-} else {
-  // first-ever load on this device: silently catch up to current level, don't replay history
-  let bootTotal = 0;
-  entries.forEach(e => { bootTotal += toAllCurrencies(e.amount, e.currency).GBP; });
-  lastMilestoneSeen = Math.floor(bootTotal / 250);
-  localStorage.setItem('lhr_milestone_seen', String(lastMilestoneSeen));
-}
-
-sparkIndex = Math.floor(Math.random() * SPARK_CONTENT.length);
-
-initSync();
-renderAll();
-</script>
-</body>
-</html>
