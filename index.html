@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>LHR Ledger</title>
+<title>Kitna Hua</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0a0a0f">
 <style>
@@ -261,13 +261,14 @@
 <header>
   <div class="brand">
     <div>
-      <h1>LHR <span>Ledger</span></h1>
+      <h1>Kitna <span>Hua</span></h1>
       <div class="brand-sub">14 days · KK &amp; Tinda · est. 2026</div>
     </div>
     <div class="sync-pill"><span class="sync-dot" id="syncDot"></span><span id="syncText">connecting</span></div>
   </div>
 </header>
 
+<div id="totalsFilterLabel" style="padding:12px 16px 0; font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.04em; font-weight:700; min-height:14px;"></div>
 <div class="totals">
   <div class="total-card gbp">
     <div class="cur-label">£ GBP</div>
@@ -511,7 +512,18 @@ const ROTATING_ONELINERS = [
   "Entry logged. KK's case for a new bag just got stronger.",
   "Recorded for posterity, audits, and future arguments."
 ];
+
+const RARE_TEASE_ONELINERS = [
+  "Tinda's been very well-behaved today. Suspiciously well-behaved. KK should be worried.",
+  "Rumor has it Tinda's working up the nerve to be Very Forward at the next nice restaurant. KK, brace accordingly.",
+  "Warning: Tinda is about to do something embarrassing in front of strangers. KK, the wallet's basically yours already."
+];
+
 function randomOneliner(){
+  // roughly 1-in-8 chance of pulling a rare tease line instead of the standard rotation
+  if(Math.random() < 0.125){
+    return RARE_TEASE_ONELINERS[Math.floor(Math.random() * RARE_TEASE_ONELINERS.length)];
+  }
   return ROTATING_ONELINERS[Math.floor(Math.random() * ROTATING_ONELINERS.length)];
 }
 
@@ -687,15 +699,29 @@ function renderAll(){
 }
 
 function renderTotals(){
-  let totals = {GBP:0, USD:0, INR:0};
+  let grandTotals = {GBP:0, USD:0, INR:0};
   entries.forEach(e => {
     const c = toAllCurrencies(e.amount, e.currency);
-    totals.GBP += c.GBP; totals.USD += c.USD; totals.INR += c.INR;
+    grandTotals.GBP += c.GBP; grandTotals.USD += c.USD; grandTotals.INR += c.INR;
   });
-  document.getElementById('totalGBP').textContent = totals.GBP.toLocaleString(undefined,{maximumFractionDigits:0});
-  document.getElementById('totalUSD').textContent = totals.USD.toLocaleString(undefined,{maximumFractionDigits:0});
-  document.getElementById('totalINR').textContent = totals.INR.toLocaleString(undefined,{maximumFractionDigits:0});
-  checkMilestone(totals.GBP);
+  checkMilestone(grandTotals.GBP);
+
+  // displayed total respects the active category filter
+  const filtered = currentFilter === 'all' ? entries : entries.filter(e => e.category === currentFilter);
+  let displayTotals = {GBP:0, USD:0, INR:0};
+  filtered.forEach(e => {
+    const c = toAllCurrencies(e.amount, e.currency);
+    displayTotals.GBP += c.GBP; displayTotals.USD += c.USD; displayTotals.INR += c.INR;
+  });
+
+  document.getElementById('totalGBP').textContent = displayTotals.GBP.toLocaleString(undefined,{maximumFractionDigits:0});
+  document.getElementById('totalUSD').textContent = displayTotals.USD.toLocaleString(undefined,{maximumFractionDigits:0});
+  document.getElementById('totalINR').textContent = displayTotals.INR.toLocaleString(undefined,{maximumFractionDigits:0});
+
+  const labelEl = document.getElementById('totalsFilterLabel');
+  if(labelEl){
+    labelEl.textContent = currentFilter === 'all' ? '' : `${currentFilter} total`;
+  }
 }
 
 function renderEntryList(){
@@ -872,6 +898,7 @@ document.querySelectorAll('.filter-chip').forEach(chip => {
     chip.classList.add('active');
     currentFilter = chip.dataset.filter;
     renderEntryList();
+    renderTotals();
   });
 });
 
