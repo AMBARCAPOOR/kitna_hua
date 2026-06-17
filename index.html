@@ -287,7 +287,7 @@
 <div class="tabs">
   <div class="tab active" data-tab="log">Log</div>
   <div class="tab" data-tab="stats">Stats</div>
-  <div class="tab" data-tab="settle">Split</div>
+  <div class="tab" data-tab="spark">Spark</div>
   <div class="tab" data-tab="rates">Rates</div>
 </div>
 
@@ -317,17 +317,13 @@
   </div>
 </div>
 
-<!-- SETTLE VIEW -->
-<div class="view" id="view-settle">
-  <div class="settle-card">
-    <h3 style="margin-top:0;">Who paid what</h3>
-    <div id="paidByList"></div>
+<!-- SPARK VIEW -->
+<div class="view" id="view-spark">
+  <div class="settle-card" id="sparkCard" style="text-align:center; padding:28px 18px;">
+    <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.06em; font-weight:700; margin-bottom:10px;" id="sparkTag">Loading...</div>
+    <div style="font-size:17px; line-height:1.5; font-weight:600;" id="sparkText"></div>
   </div>
-  <div class="settle-card">
-    <h3 style="margin-top:0;">Settle up</h3>
-    <div class="settle-result" id="settleResult">Add some entries first</div>
-    <div class="rate-help">Assumes an even 50/50 split between KK and Tinda. Universe-paid entries (comped, work expense, etc.) are excluded from the split.</div>
-  </div>
+  <button class="save-btn" id="sparkNextBtn" style="background:var(--panel-raised); color:var(--text);">Another one</button>
 </div>
 
 <!-- RATES VIEW -->
@@ -347,6 +343,11 @@
     <h3 style="margin-top:0;">This device</h3>
     <div id="deviceIdLabel" style="font-size:14px; color:var(--text-dim);"></div>
     <button class="save-btn" style="background:var(--panel-raised); color:var(--text-dim); margin-top:14px;" id="switchUserBtn">Switch entering-as identity</button>
+  </div>
+  <div class="rate-card">
+    <h3 style="margin-top:0;">Export</h3>
+    <div class="rate-help" style="margin-top:0;">Download everything logged so far as a spreadsheet — handy for splitting specific things later or just keeping a record after the trip.</div>
+    <button class="save-btn" id="exportBtn" style="margin-top:14px;">Download as Excel (.xlsx)</button>
   </div>
 </div>
 
@@ -434,6 +435,7 @@
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 /* =========================================================
    FIREBASE CONFIG — paste your own project config here
@@ -518,6 +520,29 @@ const RARE_TEASE_ONELINERS = [
   "Rumor has it Tinda's working up the nerve to be Very Forward at the next nice restaurant. KK, brace accordingly.",
   "Warning: Tinda is about to do something embarrassing in front of strangers. KK, the wallet's basically yours already."
 ];
+
+const SPARK_CONTENT = [
+  {tag: "London Trivia", text: "The Tube's deepest station, Hampstead, sits 58.5 metres below ground — that's about 320 steps if the lifts ever break."},
+  {tag: "London Trivia", text: "Big Ben is technically just the bell. The tower itself is the Elizabeth Tower, renamed in 2012 for the Queen's Diamond Jubilee."},
+  {tag: "London Trivia", text: "London has more parks and green space than any other major city in Europe — roughly 40% of the city is green."},
+  {tag: "London Trivia", text: "It's illegal to die in the Houses of Parliament, technically, because it's a royal palace and would require a state funeral."},
+  {tag: "London Trivia", text: "The Underground's first line opened in 1863 — over 160 years ago, and it's still adding new lines."},
+  {tag: "London Trivia", text: "Pelicans have lived in St James's Park since 1664, gifted by a Russian ambassador. They're still fed fresh fish daily."},
+  {tag: "London Trivia", text: "Oxford Circus isn't a circus and isn't really a circle — it's a crossroads, 'circus' just meant a round junction in old town planning."},
+  {tag: "Absurd Fact", text: "A group of flamingos is called a 'flamboyance.' No further comment needed."},
+  {tag: "Absurd Fact", text: "Wombat poop is cube-shaped, which helps it stay put on logs and rocks as a scent marker."},
+  {tag: "Absurd Fact", text: "Honey never spoils. Archaeologists have found edible honey in 3,000-year-old Egyptian tombs."},
+  {tag: "Absurd Fact", text: "Octopuses have three hearts, and two of them stop beating when the octopus swims, which is probably why they prefer crawling."},
+  {tag: "Absurd Fact", text: "Bananas are botanically berries. Strawberries, botanically, are not."},
+  {tag: "Absurd Fact", text: "A bolt of lightning is roughly five times hotter than the surface of the sun."},
+  {tag: "Couple Prompt", text: "Ask each other: what's one small thing on this trip so far you don't want to forget?"},
+  {tag: "Couple Prompt", text: "Quick game: each pick the best meal of the trip so far. No vetoing the other's choice."},
+  {tag: "Couple Prompt", text: "Tell KK one thing about her that's made this trip better. Out loud. Right now."},
+  {tag: "Couple Prompt", text: "Tinda, describe today in exactly five words. KK gets veto power if it's not accurate."},
+  {tag: "Couple Prompt", text: "Pick the most overrated thing you've done so far together, no holding back."},
+  {tag: "Couple Prompt", text: "If you had one extra day added to this trip, where would it go?"}
+];
+let sparkIndex = 0;
 
 function randomOneliner(){
   // roughly 1-in-8 chance of pulling a rare tease line instead of the standard rotation
@@ -694,7 +719,6 @@ function wireTumiLongPress(){
 function renderAll(){
   renderTotals();
   renderEntryList();
-  renderSettle();
   renderStats();
 }
 
@@ -767,42 +791,6 @@ function renderEntryList(){
   });
 }
 
-function renderSettle(){
-  const paidByList = document.getElementById('paidByList');
-  let byPerson = {
-    KK: {GBP:0, USD:0, INR:0},
-    Tinda: {GBP:0, USD:0, INR:0},
-    Universe: {GBP:0, USD:0, INR:0}
-  };
-  entries.forEach(e => {
-    const conv = toAllCurrencies(e.amount, e.currency);
-    byPerson[e.paidBy].GBP += conv.GBP;
-    byPerson[e.paidBy].USD += conv.USD;
-    byPerson[e.paidBy].INR += conv.INR;
-  });
-  paidByList.innerHTML = ['KK','Tinda','Universe'].map(p => `
-    <div class="person-card" ${p==='KK' ? 'data-tumi-target="KK"' : ''}>
-      <span class="pname">${p}</span>
-      <span class="pamts">${fmt(byPerson[p].GBP,'GBP')} &nbsp;·&nbsp; ${fmt(byPerson[p].USD,'USD')} &nbsp;·&nbsp; ${fmt(byPerson[p].INR,'INR')}</span>
-    </div>
-  `).join('');
-  wireTumiLongPress();
-
-  const splitTotal = byPerson.KK.GBP + byPerson.Tinda.GBP;
-  const diff = byPerson.KK.GBP - byPerson.Tinda.GBP;
-  const resultEl = document.getElementById('settleResult');
-
-  if(splitTotal === 0){
-    resultEl.textContent = 'Add some entries first';
-  } else if(Math.abs(diff) < 0.01){
-    resultEl.textContent = "Dead even. Nobody owes anybody.";
-  } else if(diff > 0){
-    resultEl.textContent = `Tinda owes KK ${fmt(Math.abs(diff)/2, 'GBP')}`;
-  } else {
-    resultEl.textContent = `KK owes Tinda ${fmt(Math.abs(diff)/2, 'GBP')}`;
-  }
-}
-
 function renderStats(){
   const catEl = document.getElementById('categoryBreakdown');
   const personEl = document.getElementById('personBreakdown');
@@ -852,7 +840,7 @@ function renderStats(){
     const t = personTotals[p];
     const pct = grandGBP > 0 ? (t.GBP / grandGBP * 100) : 0;
     return `
-      <div class="stat-row">
+      <div class="stat-row" ${p==='KK' ? 'data-tumi-target="KK"' : ''}>
         <div class="stat-top">
           <span class="cat-name">${p}</span>
           <span class="cat-amts">${fmt(t.GBP,'GBP')} · ${fmt(t.USD,'USD')} · ${fmt(t.INR,'INR')}</span>
@@ -860,6 +848,21 @@ function renderStats(){
         <div class="stat-bar-bg"><div class="stat-bar-fill" style="width:${pct}%; background:${p==='KK'?'var(--gbp)':p==='Tinda'?'var(--usd)':'var(--inr)'}"></div></div>
       </div>`;
   }).join('');
+  wireTumiLongPress();
+}
+
+function renderSpark(pickRandom){
+  const tagEl = document.getElementById('sparkTag');
+  const textEl = document.getElementById('sparkText');
+  if(!tagEl || !textEl) return;
+  if(pickRandom){
+    let next;
+    do { next = Math.floor(Math.random() * SPARK_CONTENT.length); }
+    while(next === sparkIndex && SPARK_CONTENT.length > 1);
+    sparkIndex = next;
+  }
+  tagEl.textContent = SPARK_CONTENT[sparkIndex].tag;
+  textEl.textContent = SPARK_CONTENT[sparkIndex].text;
 }
 
 function formatDate(ms){
@@ -888,8 +891,11 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     tab.classList.add('active');
     document.getElementById('view-' + tab.dataset.tab).classList.add('active');
+    if(tab.dataset.tab === 'spark') renderSpark(true);
   });
 });
+
+document.getElementById('sparkNextBtn')?.addEventListener('click', () => renderSpark(true));
 
 /* ---------- FILTERS ---------- */
 document.querySelectorAll('.filter-chip').forEach(chip => {
@@ -1020,6 +1026,44 @@ document.getElementById('saveRatesBtn').addEventListener('click', () => {
   pushRates();
 });
 
+/* ---------- EXPORT ---------- */
+document.getElementById('exportBtn').addEventListener('click', () => {
+  if(entries.length === 0){ showToast('Nothing to export yet'); return; }
+  if(typeof XLSX === 'undefined'){ showToast('Export library failed to load — check connection'); return; }
+
+  const rows = entries.slice().sort((a,b) => (a.createdAtMs||0) - (b.createdAtMs||0)).map(e => {
+    const conv = toAllCurrencies(e.amount, e.currency);
+    return {
+      Date: e.createdAtMs ? new Date(e.createdAtMs).toLocaleString() : '',
+      Item: e.item || '',
+      Category: e.category || '',
+      'Paid By': e.paidBy || '',
+      'Payment Method': e.method || '',
+      Location: e.location || '',
+      'Entered Currency': e.currency || '',
+      'Original Amount': e.amount || 0,
+      'Amount (GBP)': Math.round(conv.GBP * 100) / 100,
+      'Amount (USD)': Math.round(conv.USD * 100) / 100,
+      'Amount (INR)': Math.round(conv.INR * 100) / 100,
+      'Worth It (1-5)': e.rating || '',
+      Notes: e.notes || '',
+      'Entered By': e.enteredBy || ''
+    };
+  });
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [
+    {wch:18},{wch:30},{wch:12},{wch:9},{wch:14},{wch:16},
+    {wch:10},{wch:14},{wch:12},{wch:12},{wch:12},{wch:12},{wch:30},{wch:10}
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Kitna Hua');
+
+  const dateStr = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `Kitna_Hua_Export_${dateStr}.xlsx`);
+  showToast('Exported — check your downloads');
+});
+
 /* ---------- IDENTITY ---------- */
 const idModal = document.getElementById('idModal');
 function updateDeviceLabel(){
@@ -1055,6 +1099,8 @@ if(storedMilestone !== null){
   lastMilestoneSeen = Math.floor(bootTotal / 250);
   localStorage.setItem('lhr_milestone_seen', String(lastMilestoneSeen));
 }
+
+sparkIndex = Math.floor(Math.random() * SPARK_CONTENT.length);
 
 initSync();
 renderAll();
