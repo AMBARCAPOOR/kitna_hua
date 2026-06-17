@@ -221,6 +221,17 @@
     margin-top:12px; padding:14px; background:var(--panel-raised); border-radius:12px;
     text-align:center; font-size:15px; font-weight:700;
   }
+  .stat-row{padding:10px 0; border-bottom:1px solid var(--border);}
+  .stat-row:last-child{border-bottom:none;}
+  .stat-top{display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px;}
+  .stat-top .cat-name{font-weight:700; display:flex; align-items:center; gap:6px;}
+  .stat-top .cat-amts{color:var(--text-dim); font-size:11px; text-align:right;}
+  .stat-bar-bg{height:6px; background:var(--panel-raised); border-radius:4px; overflow:hidden;}
+  .stat-bar-fill{height:100%; border-radius:4px; background:var(--accent);}
+  .person-card{display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--border);}
+  .person-card:last-child{border-bottom:none;}
+  .person-card .pname{font-weight:800; font-size:14px;}
+  .person-card .pamts{font-size:12px; color:var(--text-dim); text-align:right; line-height:1.5;}
 
   .filter-row{display:flex; gap:6px; overflow-x:auto; padding:0 16px 12px; -webkit-overflow-scrolling:touch;}
   .filter-chip{
@@ -274,6 +285,7 @@
 
 <div class="tabs">
   <div class="tab active" data-tab="log">Log</div>
+  <div class="tab" data-tab="stats">Stats</div>
   <div class="tab" data-tab="settle">Split</div>
   <div class="tab" data-tab="rates">Rates</div>
 </div>
@@ -290,6 +302,18 @@
     <div class="filter-chip" data-filter="Misc">📎 Misc</div>
   </div>
   <div id="entryList"></div>
+</div>
+
+<!-- STATS VIEW -->
+<div class="view" id="view-stats">
+  <div class="settle-card">
+    <h3 style="margin-top:0;">By category</h3>
+    <div id="categoryBreakdown"></div>
+  </div>
+  <div class="settle-card">
+    <h3 style="margin-top:0;">By person</h3>
+    <div id="personBreakdown"></div>
+  </div>
 </div>
 
 <!-- SETTLE VIEW -->
@@ -433,6 +457,63 @@ let rates = { GBPUSD: 1.3430, GBPINR: 126.97, USDINR: 94.55 };
 let myIdentity = null;
 let currentFilter = 'all';
 let selectedCat = null, selectedWho = null, selectedMethod = null, selectedRating = 0;
+let lastMilestoneSeen = 0;
+let titleTapCount = 0;
+let titleTapTimer = null;
+
+const TUMI_MILESTONE_MESSAGES = [
+  "£250 in. The TUMI Fund has officially left the gate.",
+  "£500 down. KK's suitcase is gestating.",
+  "£750. Somewhere, a TUMI rep just felt a disturbance.",
+  "£1,000. That's a full carry-on's worth of guilt, Tinda.",
+  "£1,250. The fund is now sentient and demanding wheels.",
+  "£1,500. You could've bought her two TUMIs by now. Could've.",
+  "£1,750. The suitcase dreams of you specifically.",
+  "£2,000. At this point just commission a custom monogram.",
+  "£2,250. KK's TUMI Fund has its own gravitational pull.",
+  "£2,500. Somewhere a TUMI store is lighting a candle for you.",
+  "£2,750. The fund has unionized and is demanding hard-shell.",
+  "£3,000. Tinda, the fund is bigger than the actual trip now.",
+  "£3,250. This is no longer a joke, this is a prophecy.",
+  "£3,500. KK hasn't seen this number. Keep it that way.",
+  "£3,750. The TUMI Fund has reached escape velocity.",
+  "£4,000. Just buy the matching set. Save everyone the suspense."
+];
+
+function getMilestoneMessage(totalGBP){
+  const milestoneIndex = Math.floor(totalGBP / 250);
+  if(milestoneIndex <= 0) return null;
+  const idx = Math.min(milestoneIndex - 1, TUMI_MILESTONE_MESSAGES.length - 1);
+  return TUMI_MILESTONE_MESSAGES[idx];
+}
+
+function checkMilestone(totalGBP){
+  const milestoneIndex = Math.floor(totalGBP / 250);
+  if(milestoneIndex > lastMilestoneSeen && milestoneIndex > 0){
+    lastMilestoneSeen = milestoneIndex;
+    localStorage.setItem('lhr_milestone_seen', String(milestoneIndex));
+    const msg = getMilestoneMessage(totalGBP);
+    if(msg){
+      setTimeout(() => showToast(msg, 4200), 2600);
+    }
+  }
+}
+
+const ROTATING_ONELINERS = [
+  "Adding to the ledger. Adding to the legend.",
+  "Every entry brings KK one step closer to TUMI.",
+  "Logging this one quietly so Tinda doesn't flinch.",
+  "Filed under: things KK will mention later.",
+  "The ledger remembers. The ledger always remembers.",
+  "Saved. Somewhere, a suitcase just got 0.1% closer.",
+  "Noted, timestamped, and silently judged.",
+  "Another line item in the saga of Tinda vs. TUMI.",
+  "Entry logged. KK's case for a new bag just got stronger.",
+  "Recorded for posterity, audits, and future arguments."
+];
+function randomOneliner(){
+  return ROTATING_ONELINERS[Math.floor(Math.random() * ROTATING_ONELINERS.length)];
+}
 
 /* ---------- INIT FIREBASE ---------- */
 try {
@@ -562,11 +643,47 @@ function fmt(n, cur){
 
 /* ---------- RENDER ---------- */
 const CAT_ICONS = {Food:'🍜', Transport:'🚕', Lodging:'🛏️', Shopping:'🛍️', Activities:'🎟️', Misc:'📎'};
+function containsTumi(text){
+  return !!(text && text.toLowerCase().includes('tumi'));
+}
+
+const TUMI_PRICE_GBP = 295; // rough avg TUMI carry-on price, for the bit
+let tumiPressTimer = null;
+function wireTumiLongPress(){
+  const target = document.querySelector('[data-tumi-target="KK"]');
+  if(!target) return;
+  const fire = () => {
+    let grandGBP = 0;
+    entries.forEach(e => { grandGBP += toAllCurrencies(e.amount, e.currency).GBP; });
+    const tumiCount = (grandGBP / TUMI_PRICE_GBP).toFixed(1);
+    showToast(`This trip = ${tumiCount} TUMI carry-ons. KK is taking notes.`, 4200);
+  };
+  let startX, startY, moved = false;
+  const start = (e) => {
+    moved = false;
+    const t = e.touches ? e.touches[0] : e;
+    startX = t.clientX; startY = t.clientY;
+    tumiPressTimer = setTimeout(() => { if(!moved) fire(); }, 600);
+  };
+  const move = (e) => {
+    const t = e.touches ? e.touches[0] : e;
+    if(Math.abs(t.clientX - startX) > 12 || Math.abs(t.clientY - startY) > 12) moved = true;
+  };
+  const end = () => { clearTimeout(tumiPressTimer); };
+  target.addEventListener('touchstart', start, {passive:true});
+  target.addEventListener('touchmove', move, {passive:true});
+  target.addEventListener('touchend', end);
+  target.addEventListener('mousedown', start);
+  target.addEventListener('mousemove', move);
+  target.addEventListener('mouseup', end);
+  target.addEventListener('mouseleave', end);
+}
 
 function renderAll(){
   renderTotals();
   renderEntryList();
   renderSettle();
+  renderStats();
 }
 
 function renderTotals(){
@@ -578,6 +695,7 @@ function renderTotals(){
   document.getElementById('totalGBP').textContent = totals.GBP.toLocaleString(undefined,{maximumFractionDigits:0});
   document.getElementById('totalUSD').textContent = totals.USD.toLocaleString(undefined,{maximumFractionDigits:0});
   document.getElementById('totalINR').textContent = totals.INR.toLocaleString(undefined,{maximumFractionDigits:0});
+  checkMilestone(totals.GBP);
 }
 
 function renderEntryList(){
@@ -596,7 +714,7 @@ function renderEntryList(){
     const stars = e.rating ? '★'.repeat(e.rating) + '☆'.repeat(5-e.rating) : '';
     return `
       <div class="entry">
-        <div class="cat-icon">${CAT_ICONS[e.category] || '📎'}</div>
+        <div class="cat-icon">${(containsTumi(e.item) || containsTumi(e.notes)) ? '🧳' : (CAT_ICONS[e.category] || '📎')}</div>
         <div class="entry-body">
           <div class="entry-top">
             <div class="entry-item">${escapeHtml(e.item)}</div>
@@ -625,18 +743,27 @@ function renderEntryList(){
 
 function renderSettle(){
   const paidByList = document.getElementById('paidByList');
-  let byPerson = {KK:0, Tinda:0, Universe:0};
+  let byPerson = {
+    KK: {GBP:0, USD:0, INR:0},
+    Tinda: {GBP:0, USD:0, INR:0},
+    Universe: {GBP:0, USD:0, INR:0}
+  };
   entries.forEach(e => {
     const conv = toAllCurrencies(e.amount, e.currency);
-    byPerson[e.paidBy] += conv.GBP; // settle in GBP since that's local currency
+    byPerson[e.paidBy].GBP += conv.GBP;
+    byPerson[e.paidBy].USD += conv.USD;
+    byPerson[e.paidBy].INR += conv.INR;
   });
   paidByList.innerHTML = ['KK','Tinda','Universe'].map(p => `
-    <div class="settle-row"><span>${p}</span><span class="v">${fmt(byPerson[p], 'GBP')}</span></div>
+    <div class="person-card" ${p==='KK' ? 'data-tumi-target="KK"' : ''}>
+      <span class="pname">${p}</span>
+      <span class="pamts">${fmt(byPerson[p].GBP,'GBP')} &nbsp;·&nbsp; ${fmt(byPerson[p].USD,'USD')} &nbsp;·&nbsp; ${fmt(byPerson[p].INR,'INR')}</span>
+    </div>
   `).join('');
+  wireTumiLongPress();
 
-  const splitTotal = byPerson.KK + byPerson.Tinda;
-  const each = splitTotal / 2;
-  const diff = byPerson.KK - byPerson.Tinda;
+  const splitTotal = byPerson.KK.GBP + byPerson.Tinda.GBP;
+  const diff = byPerson.KK.GBP - byPerson.Tinda.GBP;
   const resultEl = document.getElementById('settleResult');
 
   if(splitTotal === 0){
@@ -648,6 +775,65 @@ function renderSettle(){
   } else {
     resultEl.textContent = `KK owes Tinda ${fmt(Math.abs(diff)/2, 'GBP')}`;
   }
+}
+
+function renderStats(){
+  const catEl = document.getElementById('categoryBreakdown');
+  const personEl = document.getElementById('personBreakdown');
+  if(!catEl || !personEl) return;
+
+  // category totals in GBP (common unit for bar comparison), plus per-currency for display
+  const cats = ['Food','Transport','Lodging','Shopping','Activities','Misc'];
+  let catTotals = {};
+  cats.forEach(c => catTotals[c] = {GBP:0, USD:0, INR:0});
+
+  let grandGBP = 0;
+  entries.forEach(e => {
+    const conv = toAllCurrencies(e.amount, e.currency);
+    catTotals[e.category].GBP += conv.GBP;
+    catTotals[e.category].USD += conv.USD;
+    catTotals[e.category].INR += conv.INR;
+    grandGBP += conv.GBP;
+  });
+
+  if(grandGBP === 0){
+    catEl.innerHTML = `<div class="empty-state" style="padding:20px;">No data yet</div>`;
+  } else {
+    catEl.innerHTML = cats.map(c => {
+      const t = catTotals[c];
+      const pct = grandGBP > 0 ? (t.GBP / grandGBP * 100) : 0;
+      if(t.GBP === 0) return '';
+      return `
+        <div class="stat-row">
+          <div class="stat-top">
+            <span class="cat-name">${CAT_ICONS[c]} ${c}</span>
+            <span class="cat-amts">${fmt(t.GBP,'GBP')} · ${fmt(t.USD,'USD')} · ${fmt(t.INR,'INR')}</span>
+          </div>
+          <div class="stat-bar-bg"><div class="stat-bar-fill" style="width:${pct}%"></div></div>
+        </div>`;
+    }).join('') || `<div class="empty-state" style="padding:20px;">No data yet</div>`;
+  }
+
+  // person totals (who paid) — reuse same calc style
+  let personTotals = {KK:{GBP:0,USD:0,INR:0}, Tinda:{GBP:0,USD:0,INR:0}, Universe:{GBP:0,USD:0,INR:0}};
+  entries.forEach(e => {
+    const conv = toAllCurrencies(e.amount, e.currency);
+    personTotals[e.paidBy].GBP += conv.GBP;
+    personTotals[e.paidBy].USD += conv.USD;
+    personTotals[e.paidBy].INR += conv.INR;
+  });
+  personEl.innerHTML = ['KK','Tinda','Universe'].map(p => {
+    const t = personTotals[p];
+    const pct = grandGBP > 0 ? (t.GBP / grandGBP * 100) : 0;
+    return `
+      <div class="stat-row">
+        <div class="stat-top">
+          <span class="cat-name">${p}</span>
+          <span class="cat-amts">${fmt(t.GBP,'GBP')} · ${fmt(t.USD,'USD')} · ${fmt(t.INR,'INR')}</span>
+        </div>
+        <div class="stat-bar-bg"><div class="stat-bar-fill" style="width:${pct}%; background:${p==='KK'?'var(--gbp)':p==='Tinda'?'var(--usd)':'var(--inr)'}"></div></div>
+      </div>`;
+  }).join('');
 }
 
 function formatDate(ms){
@@ -662,11 +848,11 @@ function escapeHtml(s){
 }
 
 /* ---------- TOAST ---------- */
-function showToast(msg){
+function showToast(msg, duration){
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2200);
+  setTimeout(() => t.classList.remove('show'), duration || 2200);
 }
 
 /* ---------- TABS ---------- */
@@ -789,7 +975,7 @@ document.getElementById('saveEntryBtn').addEventListener('click', () => {
 
   pushEntry(entry);
   modalBackdrop.classList.remove('active');
-  showToast('Added to the ledger');
+  showToast(randomOneliner());
 });
 
 /* ---------- RATES TAB ---------- */
@@ -831,6 +1017,18 @@ loadLocal();
 populateRateInputs();
 updateDeviceLabel();
 if(myIdentity){ idModal.classList.remove('active'); }
+
+const storedMilestone = localStorage.getItem('lhr_milestone_seen');
+if(storedMilestone !== null){
+  lastMilestoneSeen = parseInt(storedMilestone);
+} else {
+  // first-ever load on this device: silently catch up to current level, don't replay history
+  let bootTotal = 0;
+  entries.forEach(e => { bootTotal += toAllCurrencies(e.amount, e.currency).GBP; });
+  lastMilestoneSeen = Math.floor(bootTotal / 250);
+  localStorage.setItem('lhr_milestone_seen', String(lastMilestoneSeen));
+}
+
 initSync();
 renderAll();
 </script>
