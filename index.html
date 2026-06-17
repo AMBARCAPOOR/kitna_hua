@@ -1,4 +1,4 @@
-<!-- Kitna Hua v1.1 — fixed identity-picker not responding to taps on mobile (switched div to real button elements, swapped touch-callout for touch-action:manipulation) -->
+<!-- Kitna Hua v1.2 — fixed iOS Safari keyboard/viewport bug (modal used 92vh, which freezes at the layout viewport and doesn't shrink when the keyboard opens, hiding the top input fields on some iPhones; switched to 92dvh which recalculates dynamically, plus added scrollIntoView-on-focus as a backup) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -151,7 +151,7 @@
   }
   .modal-backdrop.active{display:flex;}
   .modal{
-    background:var(--panel); width:100%; max-height:92vh; overflow-y:auto;
+    background:var(--panel); width:100%; max-height:92dvh; overflow-y:auto;
     border-radius:24px 24px 0 0; padding:20px 18px 28px;
     animation:slideUp .25s ease-out;
     border-top:1px solid var(--border);
@@ -1019,6 +1019,19 @@ document.getElementById('addBtn').addEventListener('click', () => {
 });
 document.getElementById('closeModal').addEventListener('click', () => modalBackdrop.classList.remove('active'));
 modalBackdrop.addEventListener('click', (e) => { if(e.target === modalBackdrop) modalBackdrop.classList.remove('active'); });
+
+/* Fix for iOS Safari: when the on-screen keyboard opens, the visual viewport shrinks but
+   layout using vh units doesn't recompute on some iPhone/iOS combos, which can leave the
+   top of the modal (and its first input) pushed off-screen above the keyboard. Scrolling
+   the focused field into view forces it back into the visible area regardless of viewport
+   quirks. The delay lets the keyboard finish animating in first. */
+document.querySelectorAll('#modalBackdrop input, #modalBackdrop textarea, #modalBackdrop select').forEach(el => {
+  el.addEventListener('focus', () => {
+    setTimeout(() => {
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 300);
+  });
+});
 
 function resetForm(){
   document.getElementById('itemInput').value = '';
