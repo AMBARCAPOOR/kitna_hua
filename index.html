@@ -241,46 +241,42 @@
   .filter-chip.active{background:var(--accent); color:#1a0a00; border-color:var(--accent);}
 
   .toast{
-    position:fixed; bottom:100px; left:50%; transform:translateX(-50%) scale(0.9);
-    background:var(--panel-raised); border:1px solid var(--border); padding:16px 24px; border-radius:20px;
-    font-size:16px; font-weight:600; line-height:1.4; z-index:200; opacity:0;
+    position:fixed; bottom:110px; left:50%; transform:translateX(-50%) scale(0.9);
+    background:var(--panel-raised); border:1px solid var(--border); padding:20px 26px; border-radius:22px;
+    font-size:20px; font-weight:700; line-height:1.45; z-index:200; opacity:0;
     transition:opacity .25s, transform .25s; pointer-events:none;
-    max-width:88vw; text-align:center; box-shadow:0 8px 30px rgba(0,0,0,0.4);
+    max-width:90vw; text-align:center; box-shadow:0 8px 30px rgba(0,0,0,0.5);
     overflow:visible;
   }
   .toast.show{opacity:1; transform:translateX(-50%) scale(1);}
 
   .toast.celebration{
     background:linear-gradient(135deg, #1f1430, #2a1a3d);
-    border:1.5px solid var(--accent);
-    font-size:18px; font-weight:800; font-family:'Barlow Condensed', sans-serif;
-    padding:20px 28px; box-shadow:0 0 0 1px rgba(255,122,61,0.3), 0 8px 40px rgba(255,122,61,0.35);
+    border:2px solid var(--accent);
+    font-size:23px; font-weight:800; font-family:'Barlow Condensed', sans-serif;
+    padding:26px 30px; box-shadow:0 0 0 1px rgba(255,122,61,0.4), 0 8px 50px rgba(255,122,61,0.45);
     color:#fff;
   }
   .toast.celebration::before, .toast.celebration::after{
-    content:'✦'; position:absolute; font-size:22px; color:var(--accent);
+    content:'✦'; position:absolute; font-size:26px; color:var(--accent);
     animation:sparkle-pop 1.1s ease-out infinite;
   }
-  .toast.celebration::before{ top:-14px; left:-10px; animation-delay:0s; }
-  .toast.celebration::after{ bottom:-14px; right:-10px; animation-delay:0.4s; content:'✧'; color:var(--inr); }
+  .toast.celebration::before{ top:-16px; left:-12px; animation-delay:0s; }
+  .toast.celebration::after{ bottom:-16px; right:-12px; animation-delay:0.4s; content:'✧'; color:var(--inr); }
 
   .spark-burst{
-    position:fixed; left:50%; bottom:100px; transform:translateX(-50%);
-    z-index:199; pointer-events:none; width:280px; height:140px;
+    position:fixed; left:50%; bottom:110px;
+    z-index:199; pointer-events:none; width:1px; height:1px;
   }
   .spark-particle{
-    position:absolute; font-size:20px; opacity:0;
-    animation:spark-fly 1s ease-out forwards;
+    position:absolute; font-size:26px; opacity:0; left:0; top:0;
+    will-change:transform, opacity;
   }
   @keyframes sparkle-pop{
     0%, 100%{ transform:scale(1) rotate(0deg); opacity:0.7; }
     50%{ transform:scale(1.3) rotate(20deg); opacity:1; }
   }
-  @keyframes spark-fly{
-    0%{ opacity:0; transform:translate(0,0) scale(0.4) rotate(0deg); }
-    15%{ opacity:1; }
-    100%{ opacity:0; transform:translate(var(--dx), var(--dy)) scale(1.1) rotate(var(--rot)); }
-  }
+
 
   .id-pick{
     padding:30px 20px; text-align:center;
@@ -383,6 +379,11 @@
     <h3 style="margin-top:0;">Export</h3>
     <div class="rate-help" style="margin-top:0;">Download everything logged so far as a spreadsheet — handy for splitting specific things later or just keeping a record after the trip.</div>
     <button class="save-btn" id="exportBtn" style="margin-top:14px;">Download as Excel (.xlsx)</button>
+  </div>
+  <div class="rate-card">
+    <h3 style="margin-top:0;">Reset</h3>
+    <div class="rate-help" style="margin-top:0;">The TUMI fund milestone messages remember the last level they fired at, shared across both phones, separate from your actual entries — deleting expenses doesn't reset this. Use this if you want fresh milestones from £0 again (e.g. after a test run).</div>
+    <button class="save-btn" id="resetMilestoneBtn" style="margin-top:14px; background:var(--panel-raised); color:var(--text-dim);">Reset milestone tracker</button>
   </div>
 </div>
 
@@ -496,6 +497,7 @@ let myIdentity = null;
 let currentFilter = 'all';
 let selectedCat = null, selectedWho = null, selectedMethod = null, selectedRating = 0;
 let lastMilestoneSeen = 0;
+let milestoneSyncReady = false; // true once the first Firestore milestones snapshot has arrived (or if running local-only)
 let titleTapCount = 0;
 let titleTapTimer = null;
 
@@ -526,10 +528,15 @@ function getMilestoneMessage(totalGBP){
 }
 
 function checkMilestone(totalGBP){
+  if(firebaseReady && !milestoneSyncReady) return; // wait for the first snapshot before deciding, avoids false-fire/duplicate-fire races
   const milestoneIndex = Math.floor(totalGBP / 250);
   if(milestoneIndex > lastMilestoneSeen && milestoneIndex > 0){
     lastMilestoneSeen = milestoneIndex;
     localStorage.setItem('lhr_milestone_seen', String(milestoneIndex));
+    if(firebaseReady){
+      db.collection('lhr_trip').doc('milestones').set({ lastSeen: milestoneIndex }, { merge: true })
+        .catch(err => console.error('milestone sync failed', err));
+    }
     const msg = getMilestoneMessage(totalGBP);
     if(msg){
       setTimeout(() => showToast(msg, 4800, true), 2600);
@@ -631,7 +638,7 @@ function saveRatesLocal(){
 
 /* ---------- FIRESTORE SYNC ---------- */
 function initSync(){
-  if(!firebaseReady){ setSyncStatus('off'); renderAll(); return; }
+  if(!firebaseReady){ milestoneSyncReady = true; setSyncStatus('off'); renderAll(); return; }
   setSyncStatus('connecting');
   db.collection('lhr_trip').doc('entries').collection('items')
     .orderBy('createdAt', 'desc')
@@ -654,6 +661,17 @@ function initSync(){
       populateRateInputs();
       renderAll();
     }
+  });
+
+  db.collection('lhr_trip').doc('milestones').onSnapshot(doc => {
+    if(doc.exists){
+      const data = doc.data();
+      if(typeof data.lastSeen === 'number'){
+        lastMilestoneSeen = data.lastSeen;
+        localStorage.setItem('lhr_milestone_seen', String(lastMilestoneSeen));
+      }
+    }
+    milestoneSyncReady = true;
   });
 }
 
@@ -928,26 +946,40 @@ function fireSparkBurst(){
   const burst = document.createElement('div');
   burst.className = 'spark-burst';
   const symbols = ['✦','✧','✨','🎉','⭐'];
-  const count = 10;
+  const count = 14;
+
   for(let i = 0; i < count; i++){
     const p = document.createElement('span');
     p.className = 'spark-particle';
     p.textContent = symbols[Math.floor(Math.random() * symbols.length)];
-    const angle = (Math.PI * 2 * i / count) + (Math.random() * 0.5);
-    const dist = 80 + Math.random() * 70;
+
+    const angle = (Math.PI * 2 * i / count) + (Math.random() * 0.5 - 0.25);
+    const dist = 90 + Math.random() * 90;
     const dx = Math.cos(angle) * dist;
-    const dy = Math.sin(angle) * dist - 40;
+    const dy = Math.sin(angle) * dist - 60;
     const rot = (Math.random() * 360) - 180;
-    p.style.setProperty('--dx', dx + 'px');
-    p.style.setProperty('--dy', dy + 'px');
-    p.style.setProperty('--rot', rot + 'deg');
-    p.style.left = '50%';
-    p.style.top = '50%';
-    p.style.animationDelay = (Math.random() * 0.15) + 's';
+    const delay = Math.random() * 120;
+
     burst.appendChild(p);
+
+    if(p.animate){
+      p.animate(
+        [
+          { transform: 'translate(0px, 0px) scale(0.3) rotate(0deg)', opacity: 0 },
+          { transform: `translate(${dx * 0.3}px, ${dy * 0.3}px) scale(1.2) rotate(${rot * 0.4}deg)`, opacity: 1, offset: 0.2 },
+          { transform: `translate(${dx}px, ${dy}px) scale(0.9) rotate(${rot}deg)`, opacity: 0 }
+        ],
+        { duration: 1100, delay: delay, easing: 'cubic-bezier(0.2, 0.8, 0.3, 1)', fill: 'forwards' }
+      );
+    } else {
+      // fallback for browsers without Web Animations API support
+      p.style.opacity = '1';
+      p.style.transform = `translate(${dx}px, ${dy}px)`;
+    }
   }
+
   document.body.appendChild(burst);
-  setTimeout(() => burst.remove(), 1400);
+  setTimeout(() => burst.remove(), 1500);
 }
 
 /* ---------- TABS ---------- */
@@ -1107,3 +1139,72 @@ document.getElementById('exportBtn').addEventListener('click', () => {
       'Payment Method': e.method || '',
       Location: e.location || '',
       'Entered Currency': e.currency || '',
+      'Original Amount': e.amount || 0,
+      'Amount (GBP)': Math.round(conv.GBP * 100) / 100,
+      'Amount (USD)': Math.round(conv.USD * 100) / 100,
+      'Amount (INR)': Math.round(conv.INR * 100) / 100,
+      'Worth It (1-5)': e.rating || '',
+      Notes: e.notes || '',
+      'Entered By': e.enteredBy || ''
+    };
+  });
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [
+    {wch:18},{wch:30},{wch:12},{wch:9},{wch:14},{wch:16},
+    {wch:10},{wch:14},{wch:12},{wch:12},{wch:12},{wch:12},{wch:30},{wch:10}
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Kitna Hua');
+
+  const dateStr = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `Kitna_Hua_Export_${dateStr}.xlsx`);
+  showToast('Exported — check your downloads');
+});
+
+document.getElementById('resetMilestoneBtn').addEventListener('click', () => {
+  lastMilestoneSeen = 0;
+  localStorage.setItem('lhr_milestone_seen', '0');
+  if(firebaseReady){
+    db.collection('lhr_trip').doc('milestones').set({ lastSeen: 0 }, { merge: true })
+      .then(() => showToast('Milestone tracker reset for both phones'))
+      .catch(err => {
+        console.error(err);
+        showToast('Reset locally, but failed to sync — try again when online');
+      });
+  } else {
+    showToast('Milestone tracker reset — next £250 will trigger fresh');
+  }
+});
+
+/* ---------- IDENTITY ---------- */
+const idModal = document.getElementById('idModal');
+function updateDeviceLabel(){
+  document.getElementById('deviceIdLabel').textContent = myIdentity
+    ? `Entering as: ${myIdentity}`
+    : 'No identity set';
+}
+document.querySelectorAll('[data-idpick]').forEach(opt => {
+  opt.addEventListener('click', () => {
+    myIdentity = opt.dataset.idpick;
+    localStorage.setItem(ID_KEY, myIdentity);
+    idModal.classList.remove('active');
+    updateDeviceLabel();
+  });
+});
+document.getElementById('switchUserBtn').addEventListener('click', () => {
+  idModal.classList.add('active');
+});
+
+/* ---------- BOOT ---------- */
+loadLocal();
+populateRateInputs();
+updateDeviceLabel();
+if(myIdentity){ idModal.classList.remove('active'); }
+
+// local value is just a placeholder until the Firestore 'milestones' doc syncs and overrides it
+// (see initSync) — this only matters if Firebase is unreachable, in which case it's the real source of truth
+const storedMilestone = localStorage.getItem('lhr_milestone_seen');
+if(storedMilestone !== null){
+  lastMilestoneSeen = parseInt(storedMilestone);
+} else {
