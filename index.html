@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>LHR Ledger</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a0a0f">
+<style>
+  :root{
+    --bg:#0a0a0f;
+    --panel:#13131c;
+    --panel-raised:#1b1b27;
+    --border:#2a2a38;
+    --text:#eef0f5;
+    --text-dim:#9598a8;
+    --accent:#ff7a3d;     /* tube orange */
+    --accent-2:#3ddbd9;   /* phone-box teal */
+    --gbp:#ff7a3d;
+    --usd:#3ddbd9;
+    --inr:#ffce54;
+    --danger:#ff5d5d;
+    --good:#5fd97c;
+    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    padding-bottom:90px;
+    min-height:100vh;
+  }
+  @font-face{
+    font-family:'Barlow';
+    src:local('Arial');
+  }
+  h1,h2,h3,.display{
+    font-family:'Barlow Condensed', 'Arial Narrow', sans-serif;
+    font-weight:900;
+    letter-spacing:0.01em;
+  }
+  /* HEADER */
+  header{
+    padding:18px 16px 14px;
+    border-bottom:1px solid var(--border);
+    background:linear-gradient(180deg, #15151f, #0a0a0f);
+    position:relative;
+    overflow:hidden;
+  }
+  header::before{
+    content:'';
+    position:absolute; top:-40px; right:-40px;
+    width:160px; height:160px; border-radius:50%;
+    background:radial-gradient(circle, rgba(255,122,61,0.18), transparent 70%);
+  }
+  .brand{display:flex; align-items:center; justify-content:space-between; position:relative; z-index:1;}
+  .brand h1{font-size:26px; margin:0; line-height:1;}
+  .brand h1 span{color:var(--accent);}
+  .brand-sub{font-size:11px; color:var(--text-dim); margin-top:2px; letter-spacing:0.04em; text-transform:uppercase;}
+  .sync-dot{width:8px; height:8px; border-radius:50%; background:var(--text-dim); display:inline-block; margin-right:6px; transition:background .3s;}
+  .sync-dot.live{background:var(--good); box-shadow:0 0 8px var(--good);}
+  .sync-dot.off{background:var(--danger);}
+  .sync-pill{
+    font-size:10px; color:var(--text-dim); display:flex; align-items:center;
+    background:var(--panel-raised); padding:5px 10px; border-radius:20px;
+    border:1px solid var(--border);
+  }
+
+  /* TOTALS STRIP */
+  .totals{
+    display:grid; grid-template-columns:1fr 1fr 1fr;
+    gap:8px; padding:14px 16px;
+  }
+  .total-card{
+    background:var(--panel); border:1px solid var(--border); border-radius:14px;
+    padding:12px 10px; text-align:center; position:relative; overflow:hidden;
+  }
+  .total-card::after{
+    content:''; position:absolute; bottom:0; left:0; right:0; height:3px;
+  }
+  .total-card.gbp::after{background:var(--gbp);}
+  .total-card.usd::after{background:var(--usd);}
+  .total-card.inr::after{background:var(--inr);}
+  .total-card .cur-label{font-size:10px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.05em;}
+  .total-card .cur-amt{font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:22px; margin-top:2px;}
+
+  /* TABS */
+  .tabs{display:flex; padding:0 16px; gap:6px; border-bottom:1px solid var(--border);}
+  .tab{
+    flex:1; text-align:center; padding:10px 0; font-size:13px; color:var(--text-dim);
+    border-bottom:2px solid transparent; cursor:pointer; font-weight:600;
+  }
+  .tab.active{color:var(--text); border-bottom-color:var(--accent);}
+
+  /* VIEWS */
+  .view{display:none; padding:14px 16px 10px;}
+  .view.active{display:block;}
+
+  /* ENTRY LIST */
+  .entry{
+    background:var(--panel); border:1px solid var(--border); border-radius:14px;
+    padding:12px 14px; margin-bottom:10px; display:flex; gap:12px; align-items:flex-start;
+    position:relative;
+  }
+  .entry .cat-icon{
+    width:38px; height:38px; border-radius:10px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; font-size:18px;
+    background:var(--panel-raised);
+  }
+  .entry-body{flex:1; min-width:0;}
+  .entry-top{display:flex; justify-content:space-between; align-items:baseline; gap:8px;}
+  .entry-item{font-weight:700; font-size:15px;}
+  .entry-amt{font-family:'Barlow Condensed',sans-serif; font-weight:900; font-size:17px; white-space:nowrap;}
+  .entry-meta{font-size:11px; color:var(--text-dim); margin-top:3px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;}
+  .meta-chip{
+    background:var(--panel-raised); padding:2px 7px; border-radius:8px; font-weight:600;
+  }
+  .meta-chip.who-KK{color:var(--gbp);}
+  .meta-chip.who-Tinda{color:var(--usd);}
+  .meta-chip.who-Universe{color:var(--inr);}
+  .entry-converted{font-size:11px; color:var(--text-dim); margin-top:4px;}
+  .entry-notes{font-size:12px; color:var(--text-dim); margin-top:5px; font-style:italic;}
+  .del-btn{
+    background:none; border:none; color:var(--text-dim); font-size:18px; padding:4px 6px;
+    cursor:pointer; line-height:1;
+  }
+  .del-btn:hover{color:var(--danger);}
+  .rating{color:var(--accent); font-size:11px; letter-spacing:1px;}
+
+  .empty-state{
+    text-align:center; padding:50px 20px; color:var(--text-dim);
+  }
+  .empty-state .big{font-size:40px; margin-bottom:10px;}
+
+  /* FAB */
+  .fab{
+    position:fixed; bottom:22px; right:22px; width:60px; height:60px; border-radius:50%;
+    background:var(--accent); color:#1a0a00; font-size:28px; border:none;
+    display:flex; align-items:center; justify-content:center; box-shadow:0 6px 20px rgba(255,122,61,0.4);
+    cursor:pointer; z-index:50; font-weight:900;
+  }
+  .fab:active{transform:scale(0.94);}
+
+  /* MODAL */
+  .modal-backdrop{
+    position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:100;
+    display:none; align-items:flex-end; backdrop-filter:blur(2px);
+  }
+  .modal-backdrop.active{display:flex;}
+  .modal{
+    background:var(--panel); width:100%; max-height:92vh; overflow-y:auto;
+    border-radius:24px 24px 0 0; padding:20px 18px 28px;
+    animation:slideUp .25s ease-out;
+    border-top:1px solid var(--border);
+  }
+  @keyframes slideUp{from{transform:translateY(40px); opacity:0;} to{transform:translateY(0); opacity:1;}}
+  .modal-header{display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;}
+  .modal-header h2{font-size:22px; margin:0;}
+  .close-x{background:none; border:none; color:var(--text-dim); font-size:24px; cursor:pointer;}
+
+  label{display:block; font-size:12px; color:var(--text-dim); margin:14px 0 6px; text-transform:uppercase; letter-spacing:0.04em; font-weight:600;}
+  input, select, textarea{
+    width:100%; background:var(--panel-raised); border:1px solid var(--border); color:var(--text);
+    padding:12px 14px; border-radius:12px; font-size:16px; font-family:inherit;
+  }
+  input:focus, select:focus, textarea:focus{outline:none; border-color:var(--accent);}
+  textarea{resize:none; min-height:60px;}
+
+  .chip-row{display:flex; gap:8px; flex-wrap:wrap;}
+  .chip-opt{
+    flex:1; min-width:80px; text-align:center; padding:11px 6px; border-radius:12px;
+    background:var(--panel-raised); border:1px solid var(--border); font-size:13px; font-weight:700;
+    cursor:pointer; transition:all .15s;
+  }
+  .chip-opt.selected{border-color:var(--accent); background:rgba(255,122,61,0.15); color:var(--accent);}
+  .chip-opt.who-opt.selected.KK{border-color:var(--gbp); background:rgba(255,122,61,0.15); color:var(--gbp);}
+  .chip-opt.who-opt.selected.Tinda{border-color:var(--usd); background:rgba(61,219,217,0.15); color:var(--usd);}
+  .chip-opt.who-opt.selected.Universe{border-color:var(--inr); background:rgba(255,206,84,0.15); color:var(--inr);}
+
+  .cat-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:8px;}
+  .cat-opt{
+    display:flex; flex-direction:column; align-items:center; gap:4px; padding:12px 4px;
+    background:var(--panel-raised); border:1px solid var(--border); border-radius:12px; cursor:pointer;
+    font-size:11px; font-weight:600; color:var(--text-dim);
+  }
+  .cat-opt .ic{font-size:22px;}
+  .cat-opt.selected{border-color:var(--accent); color:var(--text); background:rgba(255,122,61,0.1);}
+
+  .amount-row{display:flex; gap:8px; align-items:center;}
+  .amount-row select{width:90px; flex-shrink:0;}
+  .converted-preview{
+    margin-top:10px; background:var(--panel-raised); border-radius:12px; padding:10px 14px;
+    font-size:13px; color:var(--text-dim); display:flex; justify-content:space-between;
+  }
+  .converted-preview b{color:var(--text);}
+
+  .star-row{display:flex; gap:6px; font-size:26px; margin-top:4px;}
+  .star{cursor:pointer; color:var(--border); transition:color .1s;}
+  .star.on{color:var(--accent);}
+
+  .save-btn{
+    width:100%; background:var(--accent); color:#1a0a00; font-weight:900; font-size:16px;
+    padding:15px; border:none; border-radius:14px; margin-top:22px; cursor:pointer;
+    font-family:'Barlow Condensed',sans-serif; letter-spacing:0.02em;
+  }
+  .save-btn:active{transform:scale(0.98);}
+  .save-btn:disabled{opacity:0.4;}
+
+  /* RATES VIEW */
+  .rate-card{
+    background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:16px; margin-bottom:12px;
+  }
+  .rate-card label{margin-top:0;}
+  .rate-help{font-size:11px; color:var(--text-dim); margin-top:6px;}
+  .settle-card{
+    background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:16px; margin-bottom:12px;
+  }
+  .settle-row{display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border); font-size:14px;}
+  .settle-row:last-child{border-bottom:none;}
+  .settle-row .v{font-weight:800;}
+  .settle-result{
+    margin-top:12px; padding:14px; background:var(--panel-raised); border-radius:12px;
+    text-align:center; font-size:15px; font-weight:700;
+  }
+
+  .filter-row{display:flex; gap:6px; overflow-x:auto; padding:0 16px 12px; -webkit-overflow-scrolling:touch;}
+  .filter-chip{
+    flex-shrink:0; padding:6px 14px; border-radius:20px; background:var(--panel); border:1px solid var(--border);
+    font-size:12px; color:var(--text-dim); cursor:pointer; font-weight:600;
+  }
+  .filter-chip.active{background:var(--accent); color:#1a0a00; border-color:var(--accent);}
+
+  .toast{
+    position:fixed; bottom:100px; left:50%; transform:translateX(-50%);
+    background:var(--panel-raised); border:1px solid var(--border); padding:10px 20px; border-radius:30px;
+    font-size:13px; z-index:200; opacity:0; transition:opacity .25s; pointer-events:none;
+  }
+  .toast.show{opacity:1;}
+
+  .id-pick{
+    padding:30px 20px; text-align:center;
+  }
+  .id-pick p{color:var(--text-dim); font-size:13px; margin-bottom:18px;}
+  .id-pick .chip-opt{padding:18px 6px; font-size:16px; margin-bottom:10px;}
+
+  ::-webkit-scrollbar{display:none;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div>
+      <h1>LHR <span>Ledger</span></h1>
+      <div class="brand-sub">14 days · KK &amp; Tinda · est. 2026</div>
+    </div>
+    <div class="sync-pill"><span class="sync-dot" id="syncDot"></span><span id="syncText">connecting</span></div>
+  </div>
+</header>
+
+<div class="totals">
+  <div class="total-card gbp">
+    <div class="cur-label">£ GBP</div>
+    <div class="cur-amt" id="totalGBP">0</div>
+  </div>
+  <div class="total-card usd">
+    <div class="cur-label">$ USD</div>
+    <div class="cur-amt" id="totalUSD">0</div>
+  </div>
+  <div class="total-card inr">
+    <div class="cur-label">₹ INR</div>
+    <div class="cur-amt" id="totalINR">0</div>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="log">Log</div>
+  <div class="tab" data-tab="settle">Split</div>
+  <div class="tab" data-tab="rates">Rates</div>
+</div>
+
+<!-- LOG VIEW -->
+<div class="view active" id="view-log">
+  <div class="filter-row" style="padding:14px 0 12px; margin:0 -16px 0;" id="filterRow">
+    <div class="filter-chip active" data-filter="all">All</div>
+    <div class="filter-chip" data-filter="Food">🍜 Food</div>
+    <div class="filter-chip" data-filter="Transport">🚕 Transport</div>
+    <div class="filter-chip" data-filter="Lodging">🛏️ Lodging</div>
+    <div class="filter-chip" data-filter="Shopping">🛍️ Shopping</div>
+    <div class="filter-chip" data-filter="Activities">🎟️ Activities</div>
+    <div class="filter-chip" data-filter="Misc">📎 Misc</div>
+  </div>
+  <div id="entryList"></div>
+</div>
+
+<!-- SETTLE VIEW -->
+<div class="view" id="view-settle">
+  <div class="settle-card">
+    <h3 style="margin-top:0;">Who paid what</h3>
+    <div id="paidByList"></div>
+  </div>
+  <div class="settle-card">
+    <h3 style="margin-top:0;">Settle up</h3>
+    <div class="settle-result" id="settleResult">Add some entries first</div>
+    <div class="rate-help">Assumes an even 50/50 split between KK and Tinda. Universe-paid entries (comped, work expense, etc.) are excluded from the split.</div>
+  </div>
+</div>
+
+<!-- RATES VIEW -->
+<div class="view" id="view-rates">
+  <div class="rate-card">
+    <h3 style="margin-top:0;">Exchange rates</h3>
+    <label>1 GBP = ? USD</label>
+    <input type="number" step="0.0001" id="rateGBPUSD">
+    <label>1 GBP = ? INR</label>
+    <input type="number" step="0.01" id="rateGBPINR">
+    <label>1 USD = ? INR</label>
+    <input type="number" step="0.01" id="rateUSDINR">
+    <div class="rate-help">Loaded with rates from mid-June 2026. Update these any time — flight delay boredom, airport exchange counter, whatever's handy. Every entry recalculates instantly.</div>
+    <button class="save-btn" id="saveRatesBtn">Update rates</button>
+  </div>
+  <div class="rate-card">
+    <h3 style="margin-top:0;">This device</h3>
+    <div id="deviceIdLabel" style="font-size:14px; color:var(--text-dim);"></div>
+    <button class="save-btn" style="background:var(--panel-raised); color:var(--text-dim); margin-top:14px;" id="switchUserBtn">Switch entering-as identity</button>
+  </div>
+</div>
+
+<button class="fab" id="addBtn">+</button>
+
+<!-- ADD ENTRY MODAL -->
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Add expense</h2>
+      <button class="close-x" id="closeModal">&times;</button>
+    </div>
+
+    <label>What was it</label>
+    <input type="text" id="itemInput" placeholder="e.g. Fish &amp; chips at Borough Market">
+
+    <label>Category</label>
+    <div class="cat-grid" id="catGrid">
+      <div class="cat-opt" data-cat="Food"><span class="ic">🍜</span>Food</div>
+      <div class="cat-opt" data-cat="Transport"><span class="ic">🚕</span>Transport</div>
+      <div class="cat-opt" data-cat="Lodging"><span class="ic">🛏️</span>Lodging</div>
+      <div class="cat-opt" data-cat="Shopping"><span class="ic">🛍️</span>Shopping</div>
+      <div class="cat-opt" data-cat="Activities"><span class="ic">🎟️</span>Activities</div>
+      <div class="cat-opt" data-cat="Misc"><span class="ic">📎</span>Misc</div>
+    </div>
+
+    <label>Who paid</label>
+    <div class="chip-row" id="paidByRow">
+      <div class="chip-opt who-opt KK" data-who="KK">KK</div>
+      <div class="chip-opt who-opt Tinda" data-who="Tinda">Tinda</div>
+      <div class="chip-opt who-opt Universe" data-who="Universe">Universe</div>
+    </div>
+
+    <label>Payment method</label>
+    <div class="chip-row" id="payMethodRow">
+      <div class="chip-opt" data-method="Cash">Cash</div>
+      <div class="chip-opt" data-method="Card 1">Card 1</div>
+      <div class="chip-opt" data-method="Card 2">Card 2</div>
+    </div>
+
+    <label>Amount</label>
+    <div class="amount-row">
+      <select id="currencySelect">
+        <option value="GBP">£ GBP</option>
+        <option value="USD">$ USD</option>
+        <option value="INR">₹ INR</option>
+      </select>
+      <input type="number" step="0.01" id="amountInput" placeholder="0.00">
+    </div>
+    <div class="converted-preview" id="convertedPreview">
+      <span>≈ <b id="convA">--</b></span>
+      <span>≈ <b id="convB">--</b></span>
+    </div>
+
+    <label>City / location <span style="text-transform:none; font-weight:400;">(optional)</span></label>
+    <input type="text" id="locationInput" placeholder="e.g. Covent Garden">
+
+    <label>Worth it?</label>
+    <div class="star-row" id="starRow">
+      <span class="star" data-val="1">★</span>
+      <span class="star" data-val="2">★</span>
+      <span class="star" data-val="3">★</span>
+      <span class="star" data-val="4">★</span>
+      <span class="star" data-val="5">★</span>
+    </div>
+
+    <label>Notes <span style="text-transform:none; font-weight:400;">(optional)</span></label>
+    <textarea id="notesInput" placeholder="Anything worth remembering about this one"></textarea>
+
+    <button class="save-btn" id="saveEntryBtn">Add to ledger</button>
+  </div>
+</div>
+
+<!-- IDENTITY PICK MODAL (first run) -->
+<div class="modal-backdrop active" id="idModal">
+  <div class="modal id-pick">
+    <h2 style="margin-bottom:4px;">Who's holding this phone?</h2>
+    <p>This is just so entries get tagged correctly. You can switch anytime in the Rates tab.</p>
+    <div class="chip-opt who-opt KK" data-idpick="KK" style="display:block;">KK</div>
+    <div class="chip-opt who-opt Tinda" data-idpick="Tinda" style="display:block;">Tinda</div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+/* =========================================================
+   FIREBASE CONFIG — paste your own project config here
+   ========================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyDOKg3XbNWwM0g4YyQCerwbq7mHhS6SGVA",
+  authDomain: "kk-aur-tinda-ka-london-fundun.firebaseapp.com",
+  projectId: "kk-aur-tinda-ka-london-fundun",
+  storageBucket: "kk-aur-tinda-ka-london-fundun.firebasestorage.app",
+  messagingSenderId: "1007758287733",
+  appId: "1:1007758287733:web:fef754bf4dfe9d29d5693c"
+};
+
+let db = null;
+let firebaseReady = false;
+const LOCAL_KEY = 'lhr_ledger_entries_v1';
+const RATES_KEY = 'lhr_ledger_rates_v1';
+const ID_KEY = 'lhr_ledger_identity_v1';
+
+let entries = [];
+let rates = { GBPUSD: 1.3430, GBPINR: 126.97, USDINR: 94.55 };
+let myIdentity = null;
+let currentFilter = 'all';
+let selectedCat = null, selectedWho = null, selectedMethod = null, selectedRating = 0;
+
+/* ---------- INIT FIREBASE ---------- */
+try {
+  if (firebaseConfig.apiKey !== "PASTE_YOUR_API_KEY") {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    firebaseReady = true;
+  }
+} catch(e) {
+  console.warn("Firebase init failed, running local-only", e);
+  firebaseReady = false;
+}
+
+function setSyncStatus(state){
+  const dot = document.getElementById('syncDot');
+  const txt = document.getElementById('syncText');
+  dot.className = 'sync-dot';
+  if(state === 'live'){ dot.classList.add('live'); txt.textContent = 'synced'; }
+  else if(state === 'off'){ dot.classList.add('off'); txt.textContent = 'offline'; }
+  else { txt.textContent = 'local only'; }
+}
+
+/* ---------- LOAD / SAVE LOCAL ---------- */
+function loadLocal(){
+  try{
+    const raw = localStorage.getItem(LOCAL_KEY);
+    entries = raw ? JSON.parse(raw) : [];
+  }catch(e){ entries = []; }
+  try{
+    const r = localStorage.getItem(RATES_KEY);
+    if(r) rates = JSON.parse(r);
+  }catch(e){}
+  try{
+    myIdentity = localStorage.getItem(ID_KEY);
+  }catch(e){}
+}
+function saveLocal(){
+  localStorage.setItem(LOCAL_KEY, JSON.stringify(entries));
+}
+function saveRatesLocal(){
+  localStorage.setItem(RATES_KEY, JSON.stringify(rates));
+}
+
+/* ---------- FIRESTORE SYNC ---------- */
+function initSync(){
+  if(!firebaseReady){ setSyncStatus('off'); renderAll(); return; }
+  setSyncStatus('connecting');
+  db.collection('lhr_trip').doc('entries').collection('items')
+    .orderBy('createdAt', 'desc')
+    .onSnapshot(snap => {
+      entries = [];
+      snap.forEach(doc => entries.push({ id: doc.id, ...doc.data() }));
+      saveLocal();
+      setSyncStatus('live');
+      renderAll();
+    }, err => {
+      console.error(err);
+      setSyncStatus('off');
+      renderAll();
+    });
+
+  db.collection('lhr_trip').doc('rates').onSnapshot(doc => {
+    if(doc.exists){
+      rates = doc.data();
+      saveRatesLocal();
+      populateRateInputs();
+      renderAll();
+    }
+  });
+}
+
+function pushEntry(entry){
+  if(firebaseReady){
+    db.collection('lhr_trip').doc('entries').collection('items').add(entry)
+      .catch(err => { console.error(err); showToast('Saved locally — will sync when online'); });
+  } else {
+    entry.id = 'local_' + Date.now();
+    entries.unshift(entry);
+    saveLocal();
+    renderAll();
+  }
+}
+
+function deleteEntry(id){
+  if(firebaseReady && !id.startsWith('local_')){
+    db.collection('lhr_trip').doc('entries').collection('items').doc(id).delete();
+  } else {
+    entries = entries.filter(e => e.id !== id);
+    saveLocal();
+    renderAll();
+  }
+}
+
+function pushRates(){
+  saveRatesLocal();
+  if(firebaseReady){
+    db.collection('lhr_trip').doc('rates').set(rates);
+  }
+  renderAll();
+  showToast('Rates updated');
+}
+
+/* ---------- CONVERSION ---------- */
+function toAllCurrencies(amount, currency){
+  // returns {GBP, USD, INR}
+  let gbp, usd, inr;
+  if(currency === 'GBP'){
+    gbp = amount;
+    usd = amount * rates.GBPUSD;
+    inr = amount * rates.GBPINR;
+  } else if(currency === 'USD'){
+    usd = amount;
+    gbp = amount / rates.GBPUSD;
+    inr = amount * rates.USDINR;
+  } else {
+    inr = amount;
+    gbp = amount / rates.GBPINR;
+    usd = amount / rates.USDINR;
+  }
+  return {GBP: gbp, USD: usd, INR: inr};
+}
+
+function fmt(n, cur){
+  const symbols = {GBP:'£', USD:'$', INR:'₹'};
+  return symbols[cur] + n.toLocaleString(undefined, {maximumFractionDigits: cur==='INR'?0:2});
+}
+
+/* ---------- RENDER ---------- */
+const CAT_ICONS = {Food:'🍜', Transport:'🚕', Lodging:'🛏️', Shopping:'🛍️', Activities:'🎟️', Misc:'📎'};
+
+function renderAll(){
+  renderTotals();
+  renderEntryList();
+  renderSettle();
+}
+
+function renderTotals(){
+  let totals = {GBP:0, USD:0, INR:0};
+  entries.forEach(e => {
+    const c = toAllCurrencies(e.amount, e.currency);
+    totals.GBP += c.GBP; totals.USD += c.USD; totals.INR += c.INR;
+  });
+  document.getElementById('totalGBP').textContent = totals.GBP.toLocaleString(undefined,{maximumFractionDigits:0});
+  document.getElementById('totalUSD').textContent = totals.USD.toLocaleString(undefined,{maximumFractionDigits:0});
+  document.getElementById('totalINR').textContent = totals.INR.toLocaleString(undefined,{maximumFractionDigits:0});
+}
+
+function renderEntryList(){
+  const list = document.getElementById('entryList');
+  const filtered = currentFilter === 'all' ? entries : entries.filter(e => e.category === currentFilter);
+
+  if(filtered.length === 0){
+    list.innerHTML = `<div class="empty-state"><div class="big">🧳</div>No expenses logged yet.<br>Tap + to add your first one.</div>`;
+    return;
+  }
+
+  list.innerHTML = filtered.map(e => {
+    const conv = toAllCurrencies(e.amount, e.currency);
+    const others = ['GBP','USD','INR'].filter(c => c !== e.currency);
+    const convStr = others.map(c => fmt(conv[c], c)).join('  ·  ');
+    const stars = e.rating ? '★'.repeat(e.rating) + '☆'.repeat(5-e.rating) : '';
+    return `
+      <div class="entry">
+        <div class="cat-icon">${CAT_ICONS[e.category] || '📎'}</div>
+        <div class="entry-body">
+          <div class="entry-top">
+            <div class="entry-item">${escapeHtml(e.item)}</div>
+            <div class="entry-amt">${fmt(e.amount, e.currency)}</div>
+          </div>
+          <div class="entry-meta">
+            <span class="meta-chip who-${e.paidBy}">${e.paidBy}</span>
+            <span class="meta-chip">${e.method}</span>
+            ${e.location ? `<span class="meta-chip">${escapeHtml(e.location)}</span>` : ''}
+            <span>${formatDate(e.createdAtMs)}</span>
+          </div>
+          <div class="entry-converted">${convStr}</div>
+          ${stars ? `<div class="rating">${stars}</div>` : ''}
+          ${e.notes ? `<div class="entry-notes">"${escapeHtml(e.notes)}"</div>` : ''}
+        </div>
+        <button class="del-btn" data-delid="${e.id}">&times;</button>
+      </div>`;
+  }).join('');
+
+  list.querySelectorAll('.del-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if(confirm('Delete this entry?')) deleteEntry(btn.dataset.delid);
+    });
+  });
+}
+
+function renderSettle(){
+  const paidByList = document.getElementById('paidByList');
+  let byPerson = {KK:0, Tinda:0, Universe:0};
+  entries.forEach(e => {
+    const conv = toAllCurrencies(e.amount, e.currency);
+    byPerson[e.paidBy] += conv.GBP; // settle in GBP since that's local currency
+  });
+  paidByList.innerHTML = ['KK','Tinda','Universe'].map(p => `
+    <div class="settle-row"><span>${p}</span><span class="v">${fmt(byPerson[p], 'GBP')}</span></div>
+  `).join('');
+
+  const splitTotal = byPerson.KK + byPerson.Tinda;
+  const each = splitTotal / 2;
+  const diff = byPerson.KK - byPerson.Tinda;
+  const resultEl = document.getElementById('settleResult');
+
+  if(splitTotal === 0){
+    resultEl.textContent = 'Add some entries first';
+  } else if(Math.abs(diff) < 0.01){
+    resultEl.textContent = "Dead even. Nobody owes anybody.";
+  } else if(diff > 0){
+    resultEl.textContent = `Tinda owes KK ${fmt(Math.abs(diff)/2, 'GBP')}`;
+  } else {
+    resultEl.textContent = `KK owes Tinda ${fmt(Math.abs(diff)/2, 'GBP')}`;
+  }
+}
+
+function formatDate(ms){
+  const d = new Date(ms);
+  return d.toLocaleDateString(undefined, {month:'short', day:'numeric'}) + ' · ' + d.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'});
+}
+
+function escapeHtml(s){
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+/* ---------- TOAST ---------- */
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+/* ---------- TABS ---------- */
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('view-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+/* ---------- FILTERS ---------- */
+document.querySelectorAll('.filter-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    currentFilter = chip.dataset.filter;
+    renderEntryList();
+  });
+});
+
+/* ---------- MODAL: ADD ENTRY ---------- */
+const modalBackdrop = document.getElementById('modalBackdrop');
+document.getElementById('addBtn').addEventListener('click', () => {
+  resetForm();
+  modalBackdrop.classList.add('active');
+});
+document.getElementById('closeModal').addEventListener('click', () => modalBackdrop.classList.remove('active'));
+modalBackdrop.addEventListener('click', (e) => { if(e.target === modalBackdrop) modalBackdrop.classList.remove('active'); });
+
+function resetForm(){
+  document.getElementById('itemInput').value = '';
+  document.getElementById('amountInput').value = '';
+  document.getElementById('locationInput').value = '';
+  document.getElementById('notesInput').value = '';
+  document.getElementById('currencySelect').value = 'GBP';
+  selectedCat = null; selectedWho = myIdentity; selectedMethod = null; selectedRating = 0;
+  document.querySelectorAll('.cat-opt').forEach(o => o.classList.remove('selected'));
+  document.querySelectorAll('.who-opt').forEach(o => o.classList.remove('selected'));
+  document.querySelectorAll('[data-method]').forEach(o => o.classList.remove('selected'));
+  document.querySelectorAll('.star').forEach(s => s.classList.remove('on'));
+  if(myIdentity){
+    document.querySelector(`.who-opt[data-who="${myIdentity}"]`)?.classList.add('selected');
+  }
+  updatePreview();
+}
+
+document.querySelectorAll('.cat-opt').forEach(opt => {
+  opt.addEventListener('click', () => {
+    document.querySelectorAll('.cat-opt').forEach(o => o.classList.remove('selected'));
+    opt.classList.add('selected');
+    selectedCat = opt.dataset.cat;
+  });
+});
+document.querySelectorAll('#paidByRow .who-opt').forEach(opt => {
+  opt.addEventListener('click', () => {
+    document.querySelectorAll('#paidByRow .who-opt').forEach(o => o.classList.remove('selected'));
+    opt.classList.add('selected');
+    selectedWho = opt.dataset.who;
+  });
+});
+document.querySelectorAll('#payMethodRow [data-method]').forEach(opt => {
+  opt.addEventListener('click', () => {
+    document.querySelectorAll('#payMethodRow [data-method]').forEach(o => o.classList.remove('selected'));
+    opt.classList.add('selected');
+    selectedMethod = opt.dataset.method;
+  });
+});
+document.querySelectorAll('.star').forEach(star => {
+  star.addEventListener('click', () => {
+    selectedRating = parseInt(star.dataset.val);
+    document.querySelectorAll('.star').forEach(s => {
+      s.classList.toggle('on', parseInt(s.dataset.val) <= selectedRating);
+    });
+  });
+});
+
+document.getElementById('amountInput').addEventListener('input', updatePreview);
+document.getElementById('currencySelect').addEventListener('change', updatePreview);
+
+function updatePreview(){
+  const amt = parseFloat(document.getElementById('amountInput').value);
+  const cur = document.getElementById('currencySelect').value;
+  const convA = document.getElementById('convA');
+  const convB = document.getElementById('convB');
+  if(!amt || isNaN(amt)){
+    convA.textContent = '--'; convB.textContent = '--';
+    return;
+  }
+  const conv = toAllCurrencies(amt, cur);
+  const others = ['GBP','USD','INR'].filter(c => c !== cur);
+  convA.textContent = fmt(conv[others[0]], others[0]);
+  convB.textContent = fmt(conv[others[1]], others[1]);
+}
+
+document.getElementById('saveEntryBtn').addEventListener('click', () => {
+  const item = document.getElementById('itemInput').value.trim();
+  const amount = parseFloat(document.getElementById('amountInput').value);
+  const currency = document.getElementById('currencySelect').value;
+
+  if(!item){ showToast('Add a description'); return; }
+  if(!amount || amount <= 0){ showToast('Enter a valid amount'); return; }
+  if(!selectedCat){ showToast('Pick a category'); return; }
+  if(!selectedWho){ showToast('Who paid?'); return; }
+  if(!selectedMethod){ showToast('Pick a payment method'); return; }
+
+  const entry = {
+    item, amount, currency,
+    category: selectedCat,
+    paidBy: selectedWho,
+    method: selectedMethod,
+    location: document.getElementById('locationInput').value.trim(),
+    notes: document.getElementById('notesInput').value.trim(),
+    rating: selectedRating,
+    enteredBy: myIdentity || selectedWho,
+    createdAtMs: Date.now(),
+    createdAt: firebaseReady ? firebase.firestore.FieldValue.serverTimestamp() : Date.now()
+  };
+
+  pushEntry(entry);
+  modalBackdrop.classList.remove('active');
+  showToast('Added to the ledger');
+});
+
+/* ---------- RATES TAB ---------- */
+function populateRateInputs(){
+  document.getElementById('rateGBPUSD').value = rates.GBPUSD;
+  document.getElementById('rateGBPINR').value = rates.GBPINR;
+  document.getElementById('rateUSDINR').value = rates.USDINR;
+}
+document.getElementById('saveRatesBtn').addEventListener('click', () => {
+  const gu = parseFloat(document.getElementById('rateGBPUSD').value);
+  const gi = parseFloat(document.getElementById('rateGBPINR').value);
+  const ui = parseFloat(document.getElementById('rateUSDINR').value);
+  if(!gu || !gi || !ui){ showToast('Fill in all three rates'); return; }
+  rates = {GBPUSD: gu, GBPINR: gi, USDINR: ui};
+  pushRates();
+});
+
+/* ---------- IDENTITY ---------- */
+const idModal = document.getElementById('idModal');
+function updateDeviceLabel(){
+  document.getElementById('deviceIdLabel').textContent = myIdentity
+    ? `Entering as: ${myIdentity}`
+    : 'No identity set';
+}
+document.querySelectorAll('[data-idpick]').forEach(opt => {
+  opt.addEventListener('click', () => {
+    myIdentity = opt.dataset.idpick;
+    localStorage.setItem(ID_KEY, myIdentity);
+    idModal.classList.remove('active');
+    updateDeviceLabel();
+  });
+});
+document.getElementById('switchUserBtn').addEventListener('click', () => {
+  idModal.classList.add('active');
+});
+
+/* ---------- BOOT ---------- */
+loadLocal();
+populateRateInputs();
+updateDeviceLabel();
+if(myIdentity){ idModal.classList.remove('active'); }
+initSync();
+renderAll();
+</script>
+</body>
+</html>
