@@ -1,3 +1,4 @@
+<!-- Kitna Hua v1.1 — fixed identity-picker not responding to taps on mobile (switched div to real button elements, swapped touch-callout for touch-action:manipulation) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -25,7 +26,7 @@
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   .chip-opt, .cat-opt, .filter-chip, .star, .tab, .stat-row[data-tumi-target], .save-btn, .fab, .del-btn, .close-x{
-    -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+    -webkit-user-select:none; user-select:none; touch-action:manipulation;
   }
   body{
     margin:0; background:var(--bg); color:var(--text);
@@ -172,8 +173,8 @@
   .chip-opt{
     flex:1; min-width:80px; text-align:center; padding:11px 6px; border-radius:12px;
     background:var(--panel-raised); border:1px solid var(--border); font-size:13px; font-weight:700;
-    cursor:pointer; transition:all .15s;
-    -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+    cursor:pointer; transition:all .15s; color:var(--text); font-family:inherit;
+    -webkit-user-select:none; user-select:none; touch-action:manipulation;
   }
   .chip-opt.selected{border-color:var(--accent); background:rgba(255,122,61,0.15); color:var(--accent);}
   .chip-opt.who-opt.selected.KK{border-color:var(--gbp); background:rgba(255,122,61,0.15); color:var(--gbp);}
@@ -466,8 +467,8 @@
   <div class="modal id-pick">
     <h2 style="margin-bottom:4px;">Who's holding this phone?</h2>
     <p>This is just so entries get tagged correctly. You can switch anytime in the Rates tab.</p>
-    <div class="chip-opt who-opt KK" data-idpick="KK" style="display:block;">KK</div>
-    <div class="chip-opt who-opt Tinda" data-idpick="Tinda" style="display:block;">Tinda</div>
+    <button type="button" class="chip-opt who-opt KK" data-idpick="KK" style="display:block; width:100%; font-family:inherit;">KK</button>
+    <button type="button" class="chip-opt who-opt Tinda" data-idpick="Tinda" style="display:block; width:100%; font-family:inherit;">Tinda</button>
   </div>
 </div>
 
@@ -1212,3 +1213,16 @@ const storedMilestone = localStorage.getItem('lhr_milestone_seen');
 if(storedMilestone !== null){
   lastMilestoneSeen = parseInt(storedMilestone);
 } else {
+  let bootTotal = 0;
+  entries.forEach(e => { bootTotal += toAllCurrencies(e.amount, e.currency).GBP; });
+  lastMilestoneSeen = Math.floor(bootTotal / 250);
+  localStorage.setItem('lhr_milestone_seen', String(lastMilestoneSeen));
+}
+
+sparkIndex = Math.floor(Math.random() * SPARK_CONTENT.length);
+
+initSync();
+renderAll();
+</script>
+</body>
+</html>
